@@ -8,7 +8,11 @@ use tokio::process::Command as TokioCommand;
 use tokio::time::{timeout, Duration};
 
 #[derive(Parser)]
-#[command(name = "obscura", about = "Obscura - A lightweight headless browser for web scraping and automation")]
+#[command(
+    name = "obscura",
+    about = "Obscura - A lightweight headless browser for web scraping and automation",
+    version
+)]
 struct Args {
     #[arg(short, long, global = true)]
     verbose: bool,
@@ -113,13 +117,13 @@ enum DumpFormat {
 
 fn banner_text(port: u16) -> String {
     format!(r#"
-   ____  _
-  / __ \| |
- | |  | | |__  ___  ___ _   _ _ __ __ _
+   ____  _                              
+  / __ \| |                             
+ | |  | | |__  ___  ___ _   _ _ __ __ _ 
  | |  | | '_ \/ __|/ __| | | | '__/ _` |
  | |__| | |_) \__ \ (__| |_| | | | (_| |
   \____/|_.__/|___/\___|\__,_|_|  \__,_|
-
+                   
   Headless Browser v{}
   CDP server: ws://127.0.0.1:{}/devtools/browser
 "#, env!("CARGO_PKG_VERSION"), port)
@@ -131,32 +135,38 @@ fn print_banner(port: u16) {
 
 #[cfg(test)]
 mod banner_tests {
-    use super::banner_text;
+    use super::{banner_text, Args};
+    use clap::CommandFactory;
 
     #[test]
-    fn banner_includes_compiled_pkg_version() {
+    fn banner_version_matches_pkg_exactly() {
         let pkg = env!("CARGO_PKG_VERSION");
         let out = banner_text(9222);
+        let expected = format!("Headless Browser v{}", pkg);
         assert!(
-            out.contains(&format!("Headless Browser v{}", pkg)),
-            "banner missing compiled CARGO_PKG_VERSION ({}): {}",
-            pkg,
+            out.contains(&expected),
+            "banner missing `{}`: {}",
+            expected,
             out
+        );
+        // The stale v0.1.0 string must never appear unless pkg is itself 0.1.0.
+        assert!(
+            pkg == "0.1.0" || !out.contains("Headless Browser v0.1.0"),
+            "banner shows stale v0.1.0 while pkg is {}",
+            pkg
         );
         assert!(out.contains("ws://127.0.0.1:9222/devtools/browser"));
     }
 
     #[test]
-    fn banner_version_is_not_hardcoded_zero() {
-        let out = banner_text(9222);
+    fn args_version_flag_reports_pkg_version() {
+        // `obscura --version` must surface the compiled package version,
+        // not a hardcoded literal. clap's `version` attribute pulls from
+        // CARGO_PKG_VERSION at compile time, so this pins the wiring.
         let pkg = env!("CARGO_PKG_VERSION");
-        if pkg != "0.1.0" {
-            assert!(
-                !out.contains("Headless Browser v0.1.0"),
-                "banner still prints stale v0.1.0 while pkg version is {}",
-                pkg
-            );
-        }
+        let cmd = Args::command();
+        let reported = cmd.get_version().expect("clap version should be set");
+        assert_eq!(reported, pkg, "clap version must equal CARGO_PKG_VERSION");
     }
 }
 
