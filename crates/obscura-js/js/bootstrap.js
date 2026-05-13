@@ -2,6 +2,21 @@
 
 globalThis.__obscura_errors = [];
 
+// Document lifecycle state (#137). Starts at "loading" so scripts running
+// during page bootstrap see the spec-correct value and follow the
+// `addEventListener('DOMContentLoaded', ...)` branch instead of treating
+// the page as already-loaded. The Rust side drives transitions via
+// __obscura_set_ready_state(state) immediately before the corresponding
+// event is dispatched:
+//   "interactive" → just before document.dispatchEvent(DOMContentLoaded)
+//   "complete"    → just before window.dispatchEvent(load)
+let __obscura_ready_state = "loading";
+globalThis.__obscura_set_ready_state = function(state) {
+  if (state === "loading" || state === "interactive" || state === "complete") {
+    __obscura_ready_state = state;
+  }
+};
+
 globalThis.addEventListener = globalThis.addEventListener || function(){};
 globalThis.onunhandledrejection = function(e) { if (e?.preventDefault) e.preventDefault(); };
 
@@ -786,7 +801,7 @@ class Document extends Node {
   get compatMode() { return "CSS1Compat"; }
   get characterSet() { return "UTF-8"; }
   get contentType() { return "text/html"; }
-  get readyState() { return "complete"; }
+  get readyState() { return __obscura_ready_state; }
   get hidden() { return false; }
   get visibilityState() { return "visible"; }
   getElementById(id) { return _wrapEl(+_dom("get_element_by_id", id)); }

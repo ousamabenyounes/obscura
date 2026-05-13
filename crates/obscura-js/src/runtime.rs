@@ -1589,4 +1589,62 @@ mod tests {
         assert_eq!(inf, serde_json::Value::Null);
     }
 
+    // Issue #137 — document.readyState must start at "loading" so scripts
+    // running during page bootstrap follow the spec-correct branch:
+    //
+    //     if (document.readyState === 'loading') {
+    //       document.addEventListener('DOMContentLoaded', onReady);
+    //     } else {
+    //       onReady();
+    //     }
+    //
+    // Pre-fix Obscura always reported "complete", so the guard above fell
+    // into the else branch immediately — running onReady() before any
+    // deferred script had set its state. X.com's failedScript fallback and
+    // Facebook's bot-challenge stub (cf. #146) both rely on this pattern.
+    #[test]
+    fn ready_state_defaults_to_loading() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        let state = rt.evaluate("document.readyState").unwrap();
+        assert_eq!(
+            state,
+            serde_json::json!("loading"),
+            "a freshly constructed runtime must report 'loading' so guards \
+             like `if (document.readyState === 'loading')` work spec-correctly"
+        );
+    }
+
+    #[test]
+    fn ready_state_transitions_to_interactive() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        rt.evaluate("globalThis.__obscura_set_ready_state('interactive');")
+            .unwrap();
+        let state = rt.evaluate("document.readyState").unwrap();
+        assert_eq!(state, serde_json::json!("interactive"));
+    }
+
+    #[test]
+    fn ready_state_transitions_to_complete() {
+        let mut rt = setup_runtime("<html><body></body></html>");
+        rt.evaluate("globalThis.__obscura_set_ready_state('complete');")
+            .unwrap();
+        let state = rt.evaluate("document.readyState").unwrap();
+        assert_eq!(state, serde_json::json!("complete"));
+    }
+
+    #[test]
+    fn ready_state_setter_rejects_unknown_values() {
+        // Defence-in-depth: only the three spec values may be assigned. An
+        // unknown value must be a no-op (state stays at the previous value).
+        let mut rt = setup_runtime("<html><body></body></html>");
+        rt.evaluate("globalThis.__obscura_set_ready_state('garbage');")
+            .unwrap();
+        let state = rt.evaluate("document.readyState").unwrap();
+        assert_eq!(
+            state,
+            serde_json::json!("loading"),
+            "an invalid state must NOT mutate readyState"
+        );
+    }
+
 }

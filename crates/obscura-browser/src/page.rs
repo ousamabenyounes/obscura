@@ -352,9 +352,16 @@ impl Page {
         }
 
         if let Some(js) = &mut self.js {
+            // Drive document.readyState through the spec-mandated states
+            // before dispatching the corresponding events (#137). Until the
+            // probe page can observe the transitions on its DOMContentLoaded
+            // listener, X.com (and any framework with a "did the deferred
+            // scripts run yet?" guard) hits its `failedScript` fallback.
             let _ = js.execute_script("<load-events>",
-                "if (typeof window.onload === 'function') { try { window.onload(); } catch(e) {} }\n\
+                "try { globalThis.__obscura_set_ready_state('interactive'); } catch(e) {}\n\
                  try { document.dispatchEvent(new Event('DOMContentLoaded')); } catch(e) {}\n\
+                 try { globalThis.__obscura_set_ready_state('complete'); } catch(e) {}\n\
+                 if (typeof window.onload === 'function') { try { window.onload(); } catch(e) {} }\n\
                  try { window.dispatchEvent(new Event('load')); } catch(e) {}");
         }
 
